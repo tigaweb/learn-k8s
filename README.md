@@ -198,4 +198,29 @@ pod/myapp2 created
 - podの冗長化など高度な設定ができない
 - デバッグなどの一時利用だけで使用する
 
+## トラブルシューティング
+
+`kubectl`でトラブルシューティングできるようになること
+
 ![alt text](<s2.png>)
+
+
+### STATUSについて
+
+```bash
+$ kubectl get pod --namespace default
+NAME     READY   STATUS    RESTARTS   AGE
+myapp    1/1     Running   0          55m
+myapp2   1/1     Running   0          46m
+```
+
+| STATUS | 内容 |
+|-|-|
+|Pending|k8sからPodの作成は許可されたが、ひとつ以上のコンテナが準備中。長時間この状態の場合は異常の場合あり|
+|Running|Podがノードにスケジュールされ、すべてのコンテナが作成された状態。常時起動が想定されるPodであれば正常な状態|
+|Completed|Podの全てのコンテナが完了した状態。再起動はしない|
+|Unknown|何らかの原因でPodの状態が取得できなかった。Podが実行されるべきノードとの通信エラーで発生する|
+|ErrImagePull|Imageの取得で失敗したことを表している。|
+|Error|コンテナが異常終了した状態。|
+|OOMKilled|コンテナがOOM(Out Of Memory)で終了した状態。Podのリソースを増やすことを検討|
+|Terminating|Podが削除中の状態。繰り返す場合は異常の可能性あり|
