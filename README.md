@@ -160,6 +160,175 @@ $ kubectl get pod --namespace default
 No resources found in default namespace.
 ```
 
+- `kubectl get <リソース名>`でリソースの情報を取得
+- `--namespace(-n)`オプションでNamespaceを指定して実行
+  - 省略可能
+- `default` Namespaceはクラスタ作成時に自動で作成される
+  - 実運用では使わない
+- `kubectl get pod <Pod名>`でPodなど特定のリソースを指定して実行可能
+
+```bash
+$ kubectl get pod myapp --namespace default
+NAME    READY   STATUS    RESTARTS   AGE
+myapp   1/1     Running   0          5d23h
+```
+
+- `--output(-o)`オプションを使うとリソースの情報をさまざまな方法で取得可能
+
+<details>
+<summary>IPアドレスやNode情報を取得できる(wide)</summary>
+
+```bash
+$ kubectl get pod myapp --output wide --namespace default
+NAME    READY   STATUS    RESTARTS   AGE     IP           NODE                 NOMINATED NODE   READINESS GATES
+myapp   1/1     Running   0          5d23h   10.244.0.5   kind-control-plane   <none>           <none>
+```
+
+</details>
+
+<details><summary>YAML形式でリソースの情報を取得できる(yaml)</summary>
+
+```yaml
+$ kubectl get pod myapp --output yaml --namespace default
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","kind":"Pod","metadata":{"annotations":{},"labels":{"app":"myapp"},"name":"myapp","namespace":"default"},"spec":{"containers":[{"image":"blux2/hello-server:1.0","name":"hello-server","ports":[{"containerPort":8080}]}]}}
+  creationTimestamp: "2024-08-15T15:02:31Z"
+  labels:
+    app: myapp
+  name: myapp
+  namespace: default
+  resourceVersion: "2981"
+  uid: 8f268551-e44d-46c2-b4d8-85954d4f439b
+spec:
+  containers:
+  - image: blux2/hello-server:1.0
+    imagePullPolicy: IfNotPresent
+    name: hello-server
+    ports:
+    - containerPort: 8080
+      protocol: TCP
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-m6ww4
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  nodeName: kind-control-plane
+  preemptionPolicy: PreemptLowerPriority
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext: {}
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 30
+  tolerations:
+  - effect: NoExecute
+    key: node.kubernetes.io/not-ready
+    operator: Exists
+    tolerationSeconds: 300
+  - effect: NoExecute
+    key: node.kubernetes.io/unreachable
+    operator: Exists
+    tolerationSeconds: 300
+  volumes:
+  - name: kube-api-access-m6ww4
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace
+status:
+  conditions:
+  - lastProbeTime: null
+    lastTransitionTime: "2024-08-15T15:02:39Z"
+    status: "True"
+    type: PodReadyToStartContainers
+  - lastProbeTime: null
+    lastTransitionTime: "2024-08-15T15:02:31Z"
+    status: "True"
+    type: Initialized
+  - lastProbeTime: null
+    lastTransitionTime: "2024-08-15T15:02:39Z"
+    status: "True"
+    type: Ready
+  - lastProbeTime: null
+    lastTransitionTime: "2024-08-15T15:02:39Z"
+    status: "True"
+    type: ContainersReady
+  - lastProbeTime: null
+    lastTransitionTime: "2024-08-15T15:02:31Z"
+    status: "True"
+    type: PodScheduled
+  containerStatuses:
+  - containerID: containerd://29fd348fdd36fb72736fa125c58109d3a15769a75672ff371fd5ab44a98476b7
+    image: docker.io/blux2/hello-server:1.0
+    imageID: docker.io/blux2/hello-server@sha256:35ab584cbe96a15ad1fb6212824b3220935d6ac9d25b3703ba259973fac5697d
+    lastState: {}
+    name: hello-server
+    ready: true
+    restartCount: 0
+    started: true
+    state:
+      running:
+        startedAt: "2024-08-15T15:02:39Z"
+  hostIP: 172.18.0.2
+  hostIPs:
+  - ip: 172.18.0.2
+  phase: Running
+  podIP: 10.244.0.5
+  podIPs:
+  - ip: 10.244.0.5
+  qosClass: BestEffort
+  startTime: "2024-08-15T15:02:31Z"
+```
+
+</details>
+
+yaml形式での出力は、lessなどと合わせて検索に利用するために使うことが多い
+
+```bash
+kubectl get pod myapp -o yaml -n default | less
+```
+
+自分がapplyしたマニュフェストとの差分を見る際に便利
+
+```bash
+kubectl get pod myapp -o yaml -n default > pod.yml
+```
+
+- マニュフェストをjson形式で出力し、欲しい情報のみ取得する
+
+```bash
+$ kubectl get pod myapp --output jsonpath='{.spec.containers[].image}'
+blux2/hello-server:1.0
+```
+
+```bash
+$ kubectl get pod myapp --output json --namespace default | jq '.spec.containers[].image'
+"blux2/hello-server:1.0"
+```
+
+
 ### マニュフェストの適用
 
 ```kind/myapp.yml
