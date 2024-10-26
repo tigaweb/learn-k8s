@@ -428,7 +428,6 @@ pod/myapp2 created
 
 ![alt text](<s2.png>)
 
-
 ### STATUSについて
 
 ```bash
@@ -589,4 +588,294 @@ Edit cancelled, no changes made.
 
 #### リソースを削除する
 
+```bash
+kubectl delete <リソース名>
+```
 
+kubectlコマンドには「Podを再起動する」コマンドがないため代替のため、それなりに利用頻度がある
+
+※本番環境においては<Deployment>リソースを使ってPodを冗長化するため、削除してしまっても問題ないケースが多い。
+
+※Podを一つ削除してもユーザー影響が出ないようにアプリケーションを実装するのがベストプラクティス
+
+```bash
+$ kubectl get pod -n default
+NAME      READY   STATUS    RESTARTS   AGE
+curlpod   1/1     Running   0          7d4h
+myapp     1/1     Running   0          23d
+myapp2    1/1     Running   0          23d
+myapp3    1/1     Running   0          8d
+$ kubectl delete pod myapp -n default
+pod "myapp" deleted
+$ kubectl get pod -n default
+NAME      READY   STATUS    RESTARTS   AGE
+curlpod   1/1     Running   0          7d4h
+myapp2    1/1     Running   0          23d
+myapp3    1/1     Running   0          8d
+```
+
+※<Deployment>を利用したPodをすべて順番に再起動したい場合は`kubectl delete`より、`kubectl rollout restart`を利用する方がよい
+
+## 便利な設定・ショートカット
+
+### 自動補完の設定
+
+シェルの[自動補完](https://kubernetes.io/docs/reference/kubectl/quick-reference/#kubectl-autocomplete)を設定すると`kubectl <TAB>`でコマンドやリソースを入力できるようになるため便利
+
+※Kubernetes v1.31以上の必要があるためスキップ
+
+### リソース指定の省略
+
+下記は同じ意味になる。
+
+```bash
+kubectl get pods
+kubectl get pod
+kubectl get po
+```
+
+ショートネームについて、下記コマンドの`SHORTNAMES`カラムで確認可能
+
+```bash
+kubectl api-resources
+```
+
+## デバッグ(トラブルシューティング)
+
+### 調査の基本的な流れ
+
+下から上に順番に調べていくと切り分けしやすい
+
+```bash
+Ingress
+↑
+Service
+↑
+Deployment
+↑
+ReplicaSet
+↑
+Pod(コンテナ)
+```
+
+Podを調査することがトラブルシューティングを行う上での基礎となる
+
+### エラー①
+
+```bash
+$ k get po
+NAME    READY   STATUS         RESTARTS   AGE
+myapp   0/1     ErrImagePull   0          4m12s
+↓
+$ k get po
+NAME    READY   STATUS             RESTARTS   AGE
+myapp   0/1     ImagePullBackOff   0          39m
+```
+
+- リソースは作成できている
+- STATUSがRunningになっていない
+
+`ImagePullBackOff`はイメージの取得で問題が発生し、リトライを待っている状態
+
+```bash
+$ k describe pod myapp -n default
+      Reason:       ImagePullBackOff
+      ...
+Events:
+  Type     Reason     Age                 From               Message
+  ----     ------     ----                ----               -------
+  Normal   Scheduled  41m                 default-scheduler  Successfully assigned default/myapp to kind-control-plane
+  Normal   Pulled     41m                 kubelet            Container image "blux2/hello-server:1.0" already present on machine
+  Normal   Created    41m                 kubelet            Created container hello-server
+  Normal   Started    41m                 kubelet            Started container hello-server
+  Normal   Killing    37m                 kubelet            Container hello-server definition changed, will be restarted
+  Warning  Failed     36m (x2 over 37m)   kubelet            Error: ImagePullBackOff
+  Warning  Failed     35m (x4 over 37m)   kubelet            Failed to pull image "blux2/hello-server:1.1": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/blux2/hello-server:1.1": failed to resolve reference "docker.io/blux2/hello-server:1.1": docker.io/blux2/hello-server:1.1: not found
+  Warning  Failed     35m (x4 over 37m)   kubelet            Error: ErrImagePull
+  Warning  BackOff    34m (x6 over 36m)   kubelet            Back-off restarting failed container hello-server in pod myapp_default(dda6ffcc-f9ae-46d3-ac86-631df5aae09f)
+  Normal   Pulling    26m (x7 over 37m)   kubelet            Pulling image "blux2/hello-server:1.1"
+  Normal   BackOff    97s (x72 over 37m)  kubelet            Back-off pulling image "blux2/hello-server:1.1"
+```
+
+下記のように表示されている
+
+```bash
+docker.io/blux2/hello-server:1.1: not found
+```
+
+- リポジトリが存在しない?
+- タグが存在しない?
+
+docker.ioと記載されているため[DockerHub](https://hub.docker.com/)を確認する
+
+![image-not-found](image-not-found.png)
+
+```bash
+$ kubectl edit pod myapp -n default
+spec:
+  containers:
+  - image: blux2/hello-server:1.1
+  ↓
+  - image: blux2/hello-server:1.0
+
+$ k get po -n default
+NAME    READY   STATUS    RESTARTS       AGE
+myapp   1/1     Running   1 (141m ago)   145m
+```
+
+## Podのライフサイクルについて
+
+Podはマニュフェストが登録されてからNodeににスケジュールされ、kubectlがコンテナを起動し、異常があったり完了条件を満たした場合に終了して寿命を迎える。
+
+仮想マシンにアプリを立ち上げていた時代と比べ、起動・停止しやすいコンテナを利用することでアプリケーションのライフサイクルは短くなった。
+
+## ReplicaSetとDeployment
+
+実際の環境でPodを直接作ることは基本的にはない。
+※Pod単体ではコンテナの冗長化ができないため
+
+**Deployment**と言うリソースを使用する。
+
+```bash
+ReplicaSet -> Pod
+           -> Pod
+
+Deployment -> ReplicaSet -> Pod
+                         -> Pod
+           -> ReplicaSet -> Pod
+                         -> Pod
+```
+
+DeploymentはReplicaSetと言うリソースを作り、ReplicaSetはPodを作る。
+
+### ReplicaSetについて
+
+ReplicaSetは指定した数のPodを複製するリソースで、Podと異なるところはPodを複製できるところ。
+
+複製するPodのの数をreplicasで指定できる。
+
+<details><summary>ReplicaSetのマニュフェスト</summary>
+
+Podを3つ作るマニュフェスト
+
+```yaml
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: httpserver
+  labels:
+    app: httpserver
+spec:
+  replicas: 3 // Podを3つ作る
+  selector:
+    matchLabels:
+      app: httpserver // templateのlabelsと一致している必要がある
+  template:
+    metadata:
+      labels:
+        app: httpserver
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.25.3
+```
+
+</details>
+
+リソースの作成と確認
+
+```bash
+$ k apply -f replicaset.yaml -n default
+replicaset.apps/httpserver created
+$ k get pod -n default
+NAME               READY   STATUS              RESTARTS   AGE
+httpserver-7w7mh   0/1     ContainerCreating   0          12s
+httpserver-fsgv7   0/1     ContainerCreating   0          12s
+httpserver-xrvw5   0/1     ContainerCreating   0          12s
+```
+
+ReplicaSetは同じPodを複製する関係上、自動でPodにsuffixをつける。
+※-7w7mh,-fsgv7,-xrvw5
+
+名前に`name: httpserver`を指定しているため、httpserver-xxxという名前が付けられている。
+
+ReplicaSetのリソースを直接参照することで、Podがいくつ作成されるべきか(DESIREDカラム)?なども確認できる。
+
+```bash
+$ k get replicaset -n default
+NAME         DESIRED   CURRENT   READY   AGE
+httpserver   3         3         3       5m26s
+```
+
+リソースの削除
+
+```bash
+$ k delete replicaset httpserver -n default
+replicaset.apps "httpserver" deleted
+$ k get replicaset -n default
+No resources found in default namespace.
+```
+
+Podの冗長化を考えた際にReplicaSet(=Podを複製できる)でも十分なように思えるが、本番の運用においては**Deployment**の利用が推奨されている。
+
+ReplicaSetとDeploymentの差として、例えばReplicaSetで管理するPod(コンテナ)のバージョンをあげようと思った時、新しいReplicaSetが必要になる。この際にシステムを無停止でPodのバージョンを上げるためにReplicaSetを管理する上位概念であるDeploymentが必要になる。
+
+```bash
+ReplicaSet -> Pod
+           -> Pod
+
+Deployment -> ReplicaSet -> Pod(v1)
+                         -> Pod(v1)
+           -> ReplicaSet -> Pod(v2)
+                         -> Pod(v2)
+```
+
+Deploymentのマニュフェストは
+
+deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx --- templateのlabelsと一致する必要がある
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.24.0
+        ports:
+        - containerPort: 80
+```
+
+```bash
+$ kubectl apply -f deployment.yaml -n default
+deployment.apps/nginx-deployment created
+
+デプロイメントが作成される
+$ kubectl get deployment -n default
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deployment   3/3     3            3           2m54s
+
+レプリカセットも一つ作成される
+$ kubectl get replicaset -n default
+NAME                          DESIRED   CURRENT   READY   AGE
+nginx-deployment-595dff4799   3         3         3       3m30s
+
+ポッドはレプリカセットに紐づいている
+$ kubectl get pods -n default
+NAME                                READY   STATUS              RESTARTS   AGE
+nginx-deployment-595dff4799-bxmgh   1/1     Running             0          18s
+nginx-deployment-595dff4799-m4qcz   0/1     ContainerCreating   0          18s
+nginx-deployment-595dff4799-q9kvv   0/1     ContainerCreating   0          18s
+```
