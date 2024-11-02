@@ -820,6 +820,8 @@ Podの冗長化を考えた際にReplicaSet(=Podを複製できる)でも十分�
 
 ReplicaSetとDeploymentの差として、例えばReplicaSetで管理するPod(コンテナ)のバージョンをあげようと思った時、新しいReplicaSetが必要になる。この際にシステムを無停止でPodのバージョンを上げるためにReplicaSetを管理する上位概念であるDeploymentが必要になる。
 
+### Deploymentについて
+
 ```bash
 ReplicaSet -> Pod
            -> Pod
@@ -879,3 +881,317 @@ nginx-deployment-595dff4799-bxmgh   1/1     Running             0          18s
 nginx-deployment-595dff4799-m4qcz   0/1     ContainerCreating   0          18s
 nginx-deployment-595dff4799-q9kvv   0/1     ContainerCreating   0          18s
 ```
+
+deplolyment.yamlの設定を変える(コンテナイメージを変更)
+
+```yaml
+    spec:
+      containers:
+      - name: nginx
+        # image: nginx:1.24.0
+        image: nginx:1.25.3
+```
+
+再度applyする
+
+```bash
+$ kubectl apply --filename deployment.yaml --namespace default
+deployment.apps/nginx-deployment configured
+
+Pod名が新しいものに置き換わっている
+$ kubectl get pod --namespace default
+NAME                                READY   STATUS    RESTARTS   AGE
+nginx-deployment-789bf7b8fc-4lpb6   1/1     Running   0          111s
+nginx-deployment-789bf7b8fc-fhmrf   1/1     Running   0          109s
+nginx-deployment-789bf7b8fc-zwblr   1/1     Running   0          108s
+
+ReplicaSetが新しくなっている
+$ kubectl get replicaset --namespace default
+NAME                          DESIRED   CURRENT   READY   AGE
+nginx-deployment-595dff4799   0         0         0       6d2h
+nginx-deployment-789bf7b8fc   3         3         3       3m12s
+
+Deploymentは変わっていない
+$ kubectl get deployment --namespace default
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deployment   3/3     3            3           6d2h
+
+imageが指定したものに置き換わっている
+$ kubectl get deployment nginx-deployment -o=jsonpath='{.spec.template.spec.containers[0].image}'
+nginx:1.25.3
+
+※jqで出力の場合
+$ kubectl get deployment nginx-deployment -o json | jq .spec.template.spec.containers[0].image
+"nginx:1.25.3"
+```
+
+#### Deploymentの挙動の制御
+
+<details><summary>Deploymentでは新規バージョン追加時の挙動の制御が可能</summary>
+
+```bash
+$ kubectl describe deployment nginx-deployment
+Name:                   nginx-deployment
+Namespace:              default
+CreationTimestamp:      Sun, 20 Oct 2024 12:58:43 +0900
+Labels:                 app=nginx
+Annotations:            deployment.kubernetes.io/revision: 2
+Selector:               app=nginx
+Replicas:               3 desired | 3 updated | 3 total | 3 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  app=nginx
+  Containers:
+   nginx:
+    Image:        nginx:1.25.3
+    Port:         80/TCP
+    Host Port:    0/TCP
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+  Progressing    True    NewReplicaSetAvailable
+OldReplicaSets:  nginx-deployment-595dff4799 (0/0 replicas created)
+NewReplicaSet:   nginx-deployment-789bf7b8fc (3/3 replicas created)
+Events:
+  Type    Reason             Age   From                   Message
+  ----    ------             ----  ----                   -------
+  Normal  ScalingReplicaSet  23m   deployment-controller  Scaled up replica set nginx-deployment-789bf7b8fc to 1
+  Normal  ScalingReplicaSet  23m   deployment-controller  Scaled down replica set nginx-deployment-595dff4799 to 2 from 3
+  Normal  ScalingReplicaSet  23m   deployment-controller  Scaled up replica set nginx-deployment-789bf7b8fc to 2 from 1
+  Normal  ScalingReplicaSet  23m   deployment-controller  Scaled down replica set nginx-deployment-595dff4799 to 1 from 2
+  Normal  ScalingReplicaSet  23m   deployment-controller  Scaled up replica set nginx-deployment-789bf7b8fc to 3 from 2
+  Normal  ScalingReplicaSet  23m   deployment-controller  Scaled down replica set nginx-deployment-595dff4799 to 0 from 1
+```
+
+</details>
+
+describeコマンドで詳細を確認すると
+
+- StrategyType -- 更新の方法の指定(RollingUpdate)
+- RollingUpdateStrategy -- RollingUpdate時の挙動の指定
+
+などPodやReplicaSetにない設定項目が存在する
+
+#### StrategyTypeとは
+
+Deploymentを利用してPodを更新する時にどのような戦略で更新するかの指定
+
+- Recreate -- 全部のPodを同時に更新
+- RollingUpdate -- Podを順番に更新
+
+の2つが指定可能
+
+RollingUpdateを指定した場合はRollingUpdateStrategyの記載が可能
+
+#### RollingUpdateStrategyとは
+
+RollingUpdate(k8sに限らず、アプリケーションのアップデート時に段階的に実施する手法)の実現のためにk8sではDeploymentが存在する。
+
+RollingUpdateStrategyで指定できるのは
+
+- maxUnavailable -- 最大幾つのPodを同時にシャットダウンできるか
+- maxSurge -- 最大幾つのPodを作成できるか
+
+の二つ
+
+デフォルト値の
+
+```bash
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+```
+
+は、Pod全体の25%まで同時にシャットダウン可能でということ。
+※Podが4つの場合、一つづつシャットダウン可能で、全体で5個(125%)までPodの存在を許容する動き
+
+同時に全ての新規Podを作成するのが楽なように見えるが、その場合最大で倍のPodが必要なことになり(4つの場合、8個)、その分クラスタのキャパシティが必要になってしまう。
+※キャパシティと`max surge`の設定によっては全ノードのキャパシティが枯渇してRollingUpdateが終わらなくなるなど事故の可能性があるため注意
+
+## Podへのアクセスに利用するService
+
+```bash
+Podが入れ替わったらアクセス先のIPを変える必要がある?
+アプリケーション
+  =>    Pod1  10.x.x.1
+  =>    Pod2  10.x.x.2
+
+Podが入れ替わってもIPが変わらないように構築する
+アプリケーション
+  =>  Service 10.x.x.5
+    =>  Pod1  service.name.default.svc.cluster.local
+    =>  Pod2  service.name.default.svc.cluster.local
+```
+
+DeploymentはIPアドレスを持たないため、リソースにアクセスするためにはIPアドレスが割り振られたPod個々にアクセスする必要がある。
+
+ただしPodのIPアドレスを直接参照指定していると、Podが再作成されてIPアドレスが変化した場合などに接続が途切れてしまう。
+
+Deploymentで作成した複数Podにへのアクセスを適切にルーティングするためにServiceというリソースを使用する。
+
+- シンプルなServiceのサンプル
+
+  ```yaml
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: hello-server-service
+  spec:
+    selector:
+      app:  hello-server  # Serviceを利用したいPodのラベルと一致させる
+    ports:
+      - protocol: TCP
+        port: 8080
+        targetPort: 8080  # 利用するコンテナが開放しているPortを指定
+  ```
+
+- Serviceとセットで立ち上げるDeloymentのサンプル
+
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: hello-server
+    labels:
+      app: hello-server
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: hello-server
+    template:
+      metadata:
+        labels:
+          app: hello-server
+      spec:
+        containers:
+        - name: hello-server
+          image: blux2/hello-server:1.0
+          ports:
+          - containerPort: 8080
+  ```
+
+実行例
+
+```bash
+$ kubectl apply -f deployment-hello-server.yaml -n default
+deployment.apps/hello-server created
+
+$ kubectl get pod -n default
+NAME                            READY   STATUS    RESTARTS   AGE
+hello-server-6cc6b44795-2csg5   1/1     Running   0          4s
+hello-server-6cc6b44795-lsrsr   1/1     Running   0          4s
+hello-server-6cc6b44795-z2llv   1/1     Running   0          4s
+
+$ kubectl apply -f service.yaml -n default
+service/hello-server-service created
+
+$ kubectl get service -n default
+NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+hello-server-service   ClusterIP   10.96.141.145   <none>        8080/TCP   29s
+kubernetes             ClusterIP   10.96.0.1       <none>        443/TCP    78d
+
+作成したServiceに対してポートフォワードを設定
+$ kubectl port-forward svc/hello-server-service 8080:8080 -n default
+Forwarding from 127.0.0.1:8080 -> 8080
+Forwarding from [::1]:8080 -> 8080
+
+接続できること
+$ curl localhost:8080
+Hello, world!
+```
+
+※上記の例だとローカルホストに接続しているのでDeploymentでも同様のことはできるが、実環境でk8sクラスタでサービスを運用する時、アプリのソースコードでPod(コンテナ)の実IPを意識しなくて良いメリットがある
+
+### ServiceのTYPEについて
+
+| Type | 説明 |
+| - | - |
+| ClusterIP | クラスタ内部のIPアドレスでServiceを公開する。<br> このIPアドレスはクラスタ内部でからしか疎通できない。<br> Ingressというリソースを利用することで外部公開が可能になる。 |
+| NodePort | 全てのNodeのIPアドレスで指定したポート番号(NodePort)を公開する |
+| LodeBalancer | 外部ロードバランサを用いて外部IPアドレスを公開する。ロードバランサは別途用意する必要がある |
+| ExternalName | ServiceをexternalNameフィールドの内容にマッピングする。<br>このマッピングでクラスタのDNSサーバがその外部ホストの名を持つCNAMEレコードを返すよう設定される |
+
+#### ClusterIP
+
+検証
+
+```bash
+ClusterIPを確認する
+$ kubectl get service hello-server-service -n default
+NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+hello-server-service   ClusterIP   10.96.141.145   <none>        8080/TCP   29m
+
+一時的なコンテナを立ち上げ、ClusterIPにcurlを実行する
+$ kubectl run curl --image curlimages/curl --rm --stdin --tty --restart=Never --command -- curl 10.96.141.145:8080
+Hello, world!pod "curl" deleted
+```
+
+#### NodePort
+
+NodePortはクラスタ外からもアクセス可能なため、port-forwardする必要がなくなる
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-server-external
+spec:
+  type: NodePort
+  selector:
+    app: hello-server
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30599
+```
+
+検証
+
+```bash
+$ kubectl apply -f service-nodeport.yaml -n default
+service/hello-server-external created
+
+$ kubectl apply -f deployment-hello-server.yaml -n default
+deployment.apps/hello-server created
+
+$ kubectl get deployments hello-server
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+hello-server   3/3     3            3           33s
+
+$ kubectl get service hello-server-external
+NAME                    TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+hello-server-external   NodePort   10.96.142.76   <none>        8080:30599/TCP   3m10s
+
+※10.96.142.76はあくまでCLUSTER-IP
+
+$ kubectl get nodes -o json | jq .'items[]'.status.addresses
+[
+  {
+    "address": "172.18.0.2",
+    "type": "InternalIP"
+  },
+  {
+    "address": "kind-nodeport-control-plane",
+    "type": "Hostname"
+  }
+]
+
+$ curl localhost:30599
+Hello, world!
+
+※本来↑で取得したIPでアクセスできるはずだが、kind + Docker Desktop環境のためlocalhostでアクセス
+
+```
+
+NodePortだとポートフォワーディング無しでアクセスできるので便利だが、Nodeが破損するとアクセスできなくなる。
+
+本番での運用はClusterIPやLoadBalancerを利用するのが良い
+
+### Serviceを利用したDNS
+
+クラスタ内で
