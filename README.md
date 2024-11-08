@@ -1194,4 +1194,283 @@ NodePortだとポートフォワーディング無しでアクセスできるの
 
 ### Serviceを利用したDNS
 
-クラスタ内で
+クラスタ内アクセスする時、IPアドレスでアクセスするとIPアドレスが変わった時に接続できなくなってしまう。
+
+k8sはService用のDNSレコードを自動で作成してくれるため、FQDNを覚えておくと便利に使える。
+
+通常下記にて接続可能
+
+`<Service名>.<Namespace名>.svc.cluster.local`
+
+```bash
+$ kubectl get service hello-server-service -n default
+NAME                   TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
+hello-server-service   ClusterIP   10.96.185.55   <none>        8080/TCP   60s
+
+
+$ kubectl get deployments.apps hello-server -n default
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+hello-server   3/3     3            3           27m
+
+ClusterIPでcurl実行
+$ kubectl -n default run curl --image curlimages/curl --rm --stdin --tty --restart=Never --command -- curl 10.96.185.55:8080
+Hello, world!pod "curl" deleted
+
+FQDNでアクセス
+$ kubectl -n default run curl --image curlimages/curl --rm --stdin --tty --restart=Never --command -- curl hello-server-service.default.svc.cluster.local:8080
+Hello, world!pod "curl" deleted
+
+```
+
+## Serviceを壊す
+
+Serviceリソースの設定を間違えるとPodへアクセスできなくなる。
+
+実運用時のトラブルの例)
+
+- Serviceに問題がある
+- ユーザーの操作に問題がある
+- Podの設定が間違っている
+- コンテナに異常がある
+- ...etc
+
+### 環境の作成
+
+#### 正常時のパラメータサンプル
+
+service.yaml：nodePortで動くもの
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-server-external
+spec:
+  type: NodePort
+  selector:
+    app: hello-server
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30599
+```
+
+hello-server.yaml
+
+```bash
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-server
+  labels:
+    app: hello-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hello-server
+  template:
+    metadata:
+      labels:
+        app: hello-server
+    spec:
+      containers:
+      - name: hello-server
+        image: blux2/hello-server:1.0
+        ports:
+        - containerPort: 8080
+```
+
+#### 環境構築、curl実行
+
+```bash
+$ kubectl apply -f service-nodeport.yaml -n default
+
+$ kubectl get service hello-server-external -o json | jq ".spec.ports[0].nodePort"
+30599
+
+$ kubectl apply -f hello-server.yaml -n default
+
+$ kubectl get deployments -n default
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+hello-server   3/3     3            3           5d23h
+
+$ kubectl get pods -n default
+NAME                            READY   STATUS    RESTARTS   AGE
+hello-server-6cc6b44795-6pltq   1/1     Running   0          5d23h
+hello-server-6cc6b44795-6vvkw   1/1     Running   0          5d23h
+hello-server-6cc6b44795-t26ms   1/1     Running   0          5d23h
+
+$ kubectl get nodes -n default -o json | jq '.items[0].status.addresses[0]'
+{
+  "address": "172.18.0.2",
+  "type": "InternalIP"
+}
+
+$ curl localhost:30599 # Docker + kind環境のためlocalhostでアクセス
+Hello, world!
+```
+
+#### 不正なServiceに差し替えて実行
+
+```bash
+間違った定義を持つserviceのyamlを読み込ませる
+$ kubectl apply -f service-destruction.yaml -n default
+service/hello-server-external configured
+
+curlが失敗するようになる
+$ curl localhost:30599
+curl: (52) Empty reply from server
+```
+
+#### 調査を行なっていく
+
+```bash
+Podの確認
+$ kubectl get pod -n default
+NAME                            READY   STATUS    RESTARTS   AGE
+hello-server-6cc6b44795-6pltq   1/1     Running   0          5d23h
+hello-server-6cc6b44795-6vvkw   1/1     Running   0          5d23h
+hello-server-6cc6b44795-t26ms   1/1     Running   0          5d23h
+
+Podは問題なく動作している
+
+Deploymentの確認
+$ kubectl get deployment -n default
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+hello-server   3/3     3            3           5d23h
+
+Deploymentも正常に動いている
+
+
+Serviceリソースを確認する
+$ kubectl get service -n default
+NAME                    TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+hello-server-external   NodePort    10.96.253.93   <none>        8080:30599/TCP   26m
+kubernetes              ClusterIP   10.96.0.1      <none>        443/TCP          5d23h
+
+こちらも問題ない
+```
+
+実環境においてシステムはインターネットに公開されているため調査の難易度は高い。
+
+原因の切り分けにあたり、なるべくアプリケーションに近いところから切り分けていくのが良い。
+
+1. Pod内からアプリケーションとの接続確認を行う
+   - 問題があればPod内で問題が発生していることがわかる
+2. クラスタ内かつ別Podから接続確認を行う
+   - Podのネットワーク周りに問題があることがわかる
+3. クラスタ内かつ別Podから、Service経由で接続確認を行う
+   - Serviceの設定に問題があることがわかる
+
+↑全てに問題がなければクラスタ内外の接続設定まわりに問題があることがわかる
+
+#### 1. Pod内からアプリケーションとの接続確認を行う
+
+動作しているコンテナにシェルが入っていないため、デバッグ用コンテナを起動して確認する。
+
+```bash
+Pod名を確認する
+$ kubectl get pod -n default
+NAME                            READY   STATUS    RESTARTS   AGE
+hello-server-6cc6b44795-6pltq   1/1     Running   0          5d23h
+hello-server-6cc6b44795-6vvkw   1/1     Running   0          5d23h
+hello-server-6cc6b44795-t26ms   1/1     Running   0          5d23h
+
+デバッグ用コンテナを作成してlocalhostににアクセスする
+$ kubectl -n default debug --stdin --tty hello-server-6cc6b44795-6pltq --image curlimages/curl --target=hello-server -- sh
+Targeting container "hello-server". If you don't see processes from this container it may be because the container runtime doesn't support this feature.
+Defaulting debug container name to debugger-hx754.
+If you don't see a command prompt, try pressing enter.
+~ $
+~ $ curl localhost:8080
+Hello, world!
+~ $ exit
+Session ended, the ephemeral container will not be restarted but may be reattached using 'kubectl attach hello-server-6cc6b44795-6pltq -c debugger-hx754 -i -t' if it is still running
+```
+
+特にコンテナに問題はないことがわかった
+
+#### 2. クラスタ内かつ別Podから接続確認を行う
+
+クラスタ内に新規に起動したPodから接続を確認する。
+
+```bash
+Podの一覧からIPを確認する
+$ kubectl get pods -o custom-columns=NAME:.metadata.name,IP:.status.podIP
+NAME                            IP
+hello-server-6cc6b44795-6pltq   10.244.0.7
+hello-server-6cc6b44795-6vvkw   10.244.0.5
+hello-server-6cc6b44795-t26ms   10.244.0.6
+
+新規作成Podから確認を行う
+$ kubectl -n default run curl --image curlimages/curl --rm --stdin --tty --restart=Never --command -- curl 10.244.0.7:8080
+Hello, world!pod "curl" deleted
+```
+
+クラスタ内の別Podからのアクセスも問題ないことがわかった
+
+#### 3. クラスタ内かつ別Podから、Service経由で接続確認を行う
+
+```bash
+Serviceの情報を取得する
+$ kubectl get svc -o custom-columns=NAME:.metadata.name,IP:.spec.clusterIP
+NAME                    IP
+hello-server-external   10.96.253.93
+kubernetes              10.96.0.1
+
+ServiceのIPアドレスを利用し、Service経由でアプリケーションにアクセスする
+$ kubectl -n default run curl --image curlimages/curl --rm --stdin --tty --restart=Never --command -- curl 10.96.253.93:8080
+curl: (7) Failed to connect to 10.96.253.93 port 8080 after 0 ms: Could not connect to server
+pod "curl" deleted
+pod default/curl terminated (Error)
+```
+
+Serviceを通すとアクセスできなくなることがわかった
+
+```bash
+Serviceの内容を確認する
+$ kubectl describe service hello-server-external -n default
+Name:                     hello-server-external
+Namespace:                default
+Labels:                   <none>
+Annotations:              <none>
+Selector:                 app=hello-serve
+Type:                     NodePort
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       10.96.253.93
+IPs:                      10.96.253.93
+Port:                     <unset>  8080/TCP
+TargetPort:               8080/TCP
+NodePort:                 <unset>  30599/TCP
+Endpoints:                <none>
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   <none>
+```
+
+Selector:app=hello-serveにtypoがあることがわかった
+
+```bash
+正  hello-server
+誤  hello-serve
+```
+
+現在適用されているserviceの定義と、正常時に使っていた定義を比較するとよりわかりやすい
+
+```bash
+$ kubectl diff -f service.yaml -n default
+diff -u -N /var/folders/bb/d1sylzs13hl9263mst4kc87w0000gn/T/LIVE-2328208767/v1.Service.default.hello-server-external /var/folders/bb/d1sylzs13hl9263mst4kc87w0000gn/T/MERGED-1134889556/v1.Service.default.hello-server-external
+--- /var/folders/bb/d1sylzs13hl9263mst4kc87w0000gn/T/LIVE-2328208767/v1.Service.default.hello-server-external	2024-11-08 17:03:44
++++ /var/folders/bb/d1sylzs13hl9263mst4kc87w0000gn/T/MERGED-1134889556/v1.Service.default.hello-server-external	2024-11-08 17:03:44
+@@ -24,7 +24,7 @@
+     protocol: TCP
+     targetPort: 8080
+   selector:
+-    app: hello-serve
++    app: hello-server
+   sessionAffinity: None
+   type: NodePort
+ status:
+```
