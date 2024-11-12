@@ -20,6 +20,14 @@ $ kind create cluster --image=kindest/node:v1.29.0
 Thanks for using kind! 😊
 ```
 
+削除
+
+```bash
+$ kind get clusters
+kind
+$ kind delete cluster -n kind
+```
+
 dockerのコンテナとしてクラスタ環境が作成される
 
 ![alt text](<s1.png>)
@@ -1474,3 +1482,17 @@ diff -u -N /var/folders/bb/d1sylzs13hl9263mst4kc87w0000gn/T/LIVE-2328208767/v1.S
    type: NodePort
  status:
 ```
+
+## Podの外部から情報を読み込む
+
+ConfingMapリソースは環境変数をコンテナの外部から値を設定したい時に使用するリソース。
+
+例えば環境ごとに異なるDB名、ユーザー名などを使用する際などに利用できる。
+
+利生方法として、下記の方法がある
+
+1. コンテナ内のコマンドの引数として読み込む
+2. コンテナの環境変数として読み込む
+3. ボリュームを利用してアプリケーションのファイルとして読み込む
+
+### コンテナの環境変数として読み込む方法
