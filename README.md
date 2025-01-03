@@ -1496,3 +1496,116 @@ ConfingMapリソースは環境変数をコンテナの外部から値を設定�
 3. ボリュームを利用してアプリケーションのファイルとして読み込む
 
 ### コンテナの環境変数として読み込む方法
+
+ポート番号をConfigMapから読み込めるようにしたサンプル
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-server
+  labels:
+    app: hello-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-server
+  template:
+    metadata:
+      labels:
+        app: hello-server
+    spec:
+      containers:
+      - name: hello-server
+        image: blux2/hello-server:1.4
+        env: # コンテナの環境変数を指定する箇所
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: hello-server-configmap # ConfigMapの名前
+              key: PORT
+
+apiVersion: v1
+kind: ConfigMap
+metadate:
+  name: hello-server-configmap
+data:
+  PORT: "8081"
+```
+
+※環境変数PORTを受け取って任意のポートで受け付ける機能自体は`blux2/hello-server:1.4`が持つ
+
+作成する
+
+```bash
+$ kubectl apply -f hello-server-env.yaml -n default
+deployment.apps/hello-server created
+configmap/hello-server-configmap created
+
+deploymentとconfigmapの確認
+$ kubectl get deployment,configmap -n default
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/hello-server   1/1     1            1           64s
+
+NAME                               DATA   AGE
+configmap/hello-server-configmap   1      63s
+configmap/kube-root-ca.crt         1      23m
+
+hello-server-configmapに設定された値の確認
+$ kubectl get configmap hello-server-configmap -o json | jq .data
+{
+  "PORT": "8081"
+}
+
+$ kubectl port-forward deployments/hello-server 8081:8081 -n default
+Forwarding from 127.0.0.1:8081 -> 8081
+Forwarding from [::1]:8081 -> 8081
+Handling connection for 8081
+
+$ curl localhost:8081
+Hello, world! Let's learn Kubernetes!
+```
+
+#### 環境変数を更新する
+
+ConfigMapを変更する
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadate:
+  name: hello-server-configmap
+data:
+  PORT: "8082" # 8081⇨8081
+```
+
+読み込み・Podの再起動
+
+```bash
+$ kubectl apply -f new-config-map.yaml
+deployment.apps/hello-server unchanged
+configmap/hello-server-configmap configured
+
+ConfigMap経由で設定した環境変数はアプリケーションの再起動が必要
+$ kubectl rollout restart deployment/hello-server -n default
+deployment.apps/hello-server restarted
+
+$ kubectl port-forward deployments/hello-server 8082:8082 -n default
+Forwarding from 127.0.0.1:8082 -> 8082
+Forwarding from [::1]:8082 -> 8082
+Handling connection for 8082
+
+$ curl localhost:8082
+Hello, world! Let's learn Kubernetes!
+```
+
+### ボリュームを利用して環境変数を読み込む方法
+
+環境変数の更新のために毎回アプリケーションの際作成が必要になるため、共有ボリュームを利用してコンテナに設定ファイルを読み込ませることで、アプリケーションの際作成無しでConfigmapの内容を読み込ませることができる。
+
+#### ボリュームについて
+
+Podにはボリュームを設定することができ、消えて欲しくないファイルを保存したり、Pod間でファイルを共有したりするファイルシステムとして利用できる。
+
+
