@@ -30,7 +30,7 @@ $ kind delete cluster -n kind
 
 dockerのコンテナとしてクラスタ環境が作成される
 
-![alt text](<s1.png>)
+![alt text](s1.png)
 
 ### 状態確認
 
@@ -365,6 +365,7 @@ kubectl get pod <Pod名> --v=<ログレベル>
 <details><summary>ログレベル7</summary>
 
 kubectlとkube-apiserverはクライアントとAPIの関係性のため、--v=7でログを確認するとRESTのリクエストが確認できる
+
 ```bash
 $ kubectl get pod --v~7 --namespace default7
 error: unknown flag: --v~7
@@ -434,7 +435,7 @@ pod/myapp2 created
 
 `kubectl`でトラブルシューティングできるようになること
 
-![alt text](<s2.png>)
+![alt text](s2.png)
 
 ### STATUSについて
 
@@ -445,16 +446,16 @@ myapp    1/1     Running   0          55m
 myapp2   1/1     Running   0          46m
 ```
 
-| STATUS | 内容 |
-|-|-|
-|Pending|k8sからPodの作成は許可されたが、ひとつ以上のコンテナが準備中。長時間この状態の場合は異常の場合あり|
-|Running|Podがノードにスケジュールされ、すべてのコンテナが作成された状態。常時起動が想定されるPodであれば正常な状態|
-|Completed|Podの全てのコンテナが完了した状態。再起動はしない|
-|Unknown|何らかの原因でPodの状態が取得できなかった。Podが実行されるべきノードとの通信エラーで発生する|
-|ErrImagePull|Imageの取得で失敗したことを表している。|
-|Error|コンテナが異常終了した状態。|
-|OOMKilled|コンテナがOOM(Out Of Memory)で終了した状態。Podのリソースを増やすことを検討|
-|Terminating|Podが削除中の状態。繰り返す場合は異常の可能性あり|
+| STATUS       | 内容                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------- |
+| Pending      | k8sからPodの作成は許可されたが、ひとつ以上のコンテナが準備中。長時間この状態の場合は異常の場合あり         |
+| Running      | Podがノードにスケジュールされ、すべてのコンテナが作成された状態。常時起動が想定されるPodであれば正常な状態 |
+| Completed    | Podの全てのコンテナが完了した状態。再起動はしない                                                          |
+| Unknown      | 何らかの原因でPodの状態が取得できなかった。Podが実行されるべきノードとの通信エラーで発生する               |
+| ErrImagePull | Imageの取得で失敗したことを表している。                                                                    |
+| Error        | コンテナが異常終了した状態。                                                                               |
+| OOMKilled    | コンテナがOOM(Out Of Memory)で終了した状態。Podのリソースを増やすことを検討                                |
+| Terminating  | Podが削除中の状態。繰り返す場合は異常の可能性あり                                                          |
 
 ### デバッグ用のサイドカーコンテナの立ち上げ
 
@@ -784,8 +785,8 @@ spec:
         app: httpserver
     spec:
       containers:
-      - name: nginx
-        image: nginx:1.25.3
+        - name: nginx
+          image: nginx:1.25.3
 ```
 
 </details>
@@ -862,10 +863,10 @@ spec:
         app: nginx
     spec:
       containers:
-      - name: nginx
-        image: nginx:1.24.0
-        ports:
-        - containerPort: 80
+        - name: nginx
+          image: nginx:1.24.0
+          ports:
+            - containerPort: 80
 ```
 
 ```bash
@@ -893,11 +894,11 @@ nginx-deployment-595dff4799-q9kvv   0/1     ContainerCreating   0          18s
 deplolyment.yamlの設定を変える(コンテナイメージを変更)
 
 ```yaml
-    spec:
-      containers:
-      - name: nginx
-        # image: nginx:1.24.0
-        image: nginx:1.25.3
+spec:
+  containers:
+    - name: nginx
+      # image: nginx:1.24.0
+      image: nginx:1.25.3
 ```
 
 再度applyする
@@ -1050,11 +1051,11 @@ Deploymentで作成した複数Podにへのアクセスを適切にルーティ�
     name: hello-server-service
   spec:
     selector:
-      app:  hello-server  # Serviceを利用したいPodのラベルと一致させる
+      app: hello-server # Serviceを利用したいPodのラベルと一致させる
     ports:
       - protocol: TCP
         port: 8080
-        targetPort: 8080  # 利用するコンテナが開放しているPortを指定
+        targetPort: 8080 # 利用するコンテナが開放しているPortを指定
   ```
 
 - Serviceとセットで立ち上げるDeloymentのサンプル
@@ -1077,10 +1078,10 @@ Deploymentで作成した複数Podにへのアクセスを適切にルーティ�
           app: hello-server
       spec:
         containers:
-        - name: hello-server
-          image: blux2/hello-server:1.0
-          ports:
-          - containerPort: 8080
+          - name: hello-server
+            image: blux2/hello-server:1.0
+            ports:
+              - containerPort: 8080
   ```
 
 実行例
@@ -1117,12 +1118,12 @@ Hello, world!
 
 ### ServiceのTYPEについて
 
-| Type | 説明 |
-| - | - |
-| ClusterIP | クラスタ内部のIPアドレスでServiceを公開する。<br> このIPアドレスはクラスタ内部でからしか疎通できない。<br> Ingressというリソースを利用することで外部公開が可能になる。 |
-| NodePort | 全てのNodeのIPアドレスで指定したポート番号(NodePort)を公開する |
-| LodeBalancer | 外部ロードバランサを用いて外部IPアドレスを公開する。ロードバランサは別途用意する必要がある |
-| ExternalName | ServiceをexternalNameフィールドの内容にマッピングする。<br>このマッピングでクラスタのDNSサーバがその外部ホストの名を持つCNAMEレコードを返すよう設定される |
+| Type         | 説明                                                                                                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ClusterIP    | クラスタ内部のIPアドレスでServiceを公開する。<br> このIPアドレスはクラスタ内部でからしか疎通できない。<br> Ingressというリソースを利用することで外部公開が可能になる。 |
+| NodePort     | 全てのNodeのIPアドレスで指定したポート番号(NodePort)を公開する                                                                                                         |
+| LodeBalancer | 外部ロードバランサを用いて外部IPアドレスを公開する。ロードバランサは別途用意する必要がある                                                                             |
+| ExternalName | ServiceをexternalNameフィールドの内容にマッピングする。<br>このマッピングでクラスタのDNSサーバがその外部ホストの名を持つCNAMEレコードを返すよう設定される              |
 
 #### ClusterIP
 
@@ -1608,4 +1609,401 @@ Hello, world! Let's learn Kubernetes!
 
 Podにはボリュームを設定することができ、消えて欲しくないファイルを保存したり、Pod間でファイルを共有したりするファイルシステムとして利用できる。
 
+hello-server-volume.yaml
 
+```yaml
+---
+volumes:
+  - name: hello-server-config
+    configMap:
+      name: hello-server-configmap
+---
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-server-configmap
+data:
+  myconfig.txt: |-
+    I am hungry.
+```
+
+実行内容
+
+```bash
+% kubectl apply -f hello-server-volume.yaml -n default
+deployment.apps/hello-server configured
+configmap/hello-server-configmap created
+%
+% kubectl get pod -n default
+NAME                            READY   STATUS    RESTARTS   AGE
+hello-server-56f54cc4fc-5nvqf   1/1     Running   0          15s
+hello-server-56f54cc4fc-dq9pc   1/1     Running   0          8s
+hello-server-56f54cc4fc-vf4ss   1/1     Running   0          9s
+% kubectl port-forward deployments/hello-server 8080:8080
+Forwarding from 127.0.0.1:8080 -> 8080
+Forwarding from [::1]:8080 -> 8080
+Handling connection for 8080
+
+% curl localhost:8080
+I am hungry.
+```
+
+環境変数のKey名やラベルの名称指定を間違えるとコンテナが立ち上がらない原因になるため注意。
+
+※DeploymentのRolling Upgradeを適切に有効にしていたら、コンテナが立ち上がらない状況でも起動中のコンテナを生かしたまま動かしてくれる(maxSurgeが1以上であれば正常に起動するPodを保持する)
+
+### 機密情報を扱うためのSecret
+
+DBの接続情報などをアプリケーションにハードコーディングしたくない時、テスト環境・本番環境など環境ごとにパスワードを変えたいときなどに利用する。
+
+ConfigMapでもアプリケーション外部から環境変数を渡すことは可能だが、ConfigMapを参照できる人全員が秘密情報にアクセスできると問題がある。
+
+Secretリソースを利用すると、アクセス権を分けることができる。
+
+Secretに登録するデータはBase64でエンコードして登録する必要がある。
+
+> echo -n <エンコードしたい文字列> | base64
+
+SecretをPodに読み込む方法は2つある。
+
+- コンテナの環境変数として読み込む
+- ボリュームを利用してコンテナに設定ファイルを読み込む
+
+## Jobの実行
+
+Jobは一回限りの実行Podに利用する。
+
+Podの実行が成功するまで指定した回数指定した回数リトライを実行する。
+
+```bash
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: date-checker
+spec:
+  template:
+    spec:
+      containers:
+      - name: date
+        image: ubuntu:22.04  // Jobで起動するコンテナに利用するイメージを指定
+        command: ["date"]  // コンテナ内で実行するコマンドを指定
+      restartPolicy: Never
+  backoffLimit: 4
+```
+
+```bash
+% kubectl apply -f job.yaml -n default
+job.batch/date-checker created
+% kubectl get pod -n default
+NAME                 READY   STATUS              RESTARTS   AGE
+date-checker-6sgwx   0/1     ContainerCreating   0          4s
+
+% kubectl describe job date-checker -n default
+Name:             date-checker
+Namespace:        default
+Selector:         batch.kubernetes.io/controller-uid=c6afa4cf-9cf0-4c1c-9c3c-9e8010ee7c1e
+Labels:           batch.kubernetes.io/controller-uid=c6afa4cf-9cf0-4c1c-9c3c-9e8010ee7c1e
+                  batch.kubernetes.io/job-name=date-checker
+                  controller-uid=c6afa4cf-9cf0-4c1c-9c3c-9e8010ee7c1e
+                  job-name=date-checker
+Annotations:      <none>
+Parallelism:      1
+Completions:      1
+Completion Mode:  NonIndexed
+Suspend:          false
+Backoff Limit:    4
+Start Time:       Fri, 03 Jan 2025 21:23:34 +0900
+Completed At:     Fri, 03 Jan 2025 21:23:44 +0900
+Duration:         10s
+Pods Statuses:    0 Active (0 Ready) / 1 Succeeded / 0 Failed
+Pod Template:
+  Labels:  batch.kubernetes.io/controller-uid=c6afa4cf-9cf0-4c1c-9c3c-9e8010ee7c1e
+           batch.kubernetes.io/job-name=date-checker
+           controller-uid=c6afa4cf-9cf0-4c1c-9c3c-9e8010ee7c1e
+           job-name=date-checker
+  Containers:
+   date:
+    Image:      ubuntu:22.04
+    Port:       <none>
+    Host Port:  <none>
+    Command:
+      date
+    Environment:   <none>
+    Mounts:        <none>
+  Volumes:         <none>
+  Node-Selectors:  <none>
+  Tolerations:     <none>
+Events:
+  Type    Reason            Age   From            Message
+  ----    ------            ----  ----            -------
+  Normal  SuccessfulCreate  85s   job-controller  Created pod: date-checker-6sgwx
+  Normal  Completed         75s   job-controller  Job completed
+```
+
+### Jobの定期実行
+
+CronJobを使うことでJobを定期的に実行できる。
+
+scheduleを指定することでCronと同等の動きを実現できる。
+
+```bash
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: date
+spec:
+  schedule: "*/2 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: date
+            image: ubuntu:22.04
+            command: ["date"]
+          restartPolicy: Never
+```
+
+定期実行の確認
+
+```bash
+% kubectl get cronjob -n default
+NAME   SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+date   */2 * * * *   False     0        <none>          40s
+% kubectl get job -n default
+NAME            COMPLETIONS   DURATION   AGE
+date-28931818   1/1           3s         2m50s
+date-28931820   1/1           3s         50s
+```
+
+## アプリケーションのヘルスチェック
+
+k8sにはアプリケーションのヘルスチェックを行い、ヘルシーではない時に自動でServiceやPodを制御する仕組みがある。
+
+- Readiness probe
+  - エンドポイントに定期的に疎通を行い、失敗した場合にServiceから接続を外す
+- Liveness probe
+  - エンドポイントに定期的に疎通を行い、失敗した場合Podを再起動する
+    - ※無限に再起動を繰り返すリスクがあるため注意
+- Startup probe
+  - Podの初回起動時のみに利用するProbe
+
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: httpserver
+  name: httpserver-readiness
+spec:
+  containers:
+  - name: httpserver
+    image: blux2/delayfailserver:1.1
+    readinessProbe: # 200~400で成功、失敗時はPodをServiceから外す
+      httpGet:
+        path: /healthz # エンドポイントを指定
+        port: 8080 # エンドポイントのポートを指定
+      initialDelaySeconds: 5
+      periodSeconds: 5
+    livenessProbe: # 200~400で成功、失敗時はPodを再起動する
+      httpGet:
+        path: /healthz
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+## アプリケーションのリソースの指定
+
+k8sではアプリケーションのリソースの指定方法によってスケジュールが変わるため、必須で指定する必要がある。
+
+デフォルトでは、
+
+- CPU
+- メモリ
+- Ephameral Storage
+
+が設定できる。
+
+### Resource requestsとResource limits
+
+```bash
+spec:
+  containers:
+  - name: hello-server
+    image: blux2/hello-server:1.6
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "10m"
+      limits:
+        memory: "64Mi"
+        cpu: "10m"
+```
+
+`Resource requests`は確保したいリソースの最低使用量を指定することができる。
+
+k8sのスケジューラはこの値を見てスケジュールするNodeを決める。
+
+※requestsの値を見てリソースを確保できるNodeにPodをスケジュールする
+
+`Resource limits`はコンテナが使用できるリソース使用量の上限を指定できる。
+
+コンテナはこのlimitsの上限を超えてリソースを使用することはできない。
+
+メモリが上限を超える場合、PodはOOM(Out Of Memory)でkillされる。
+
+CPUが上限値を超える場合、即座にPodがkillされることはないが、スロットリングが発生してアプリケーションの動作が遅くなる。
+
+#### 単位について
+
+##### メモリ
+
+単位を指定しない場合、1は1byteを意味する
+
+K(キロ)、M(メガ)の指定も可能
+
+Ki、Miについて、Kは10^3(1000)を意味するが、Kiは2^10(1024)を意味するため、区別のために存在する。
+
+##### CPU
+
+単位を指定しない場合、1はCPUの1コアを意味する。
+
+1m=0.001コアのため、通常は整数もしくはミリコアで指定する
+
+### PodのQuality of Service(Qos) Classes
+
+Nodeのメモリが完全に枯渇すると、そのNodeにに乗っているすべてのコンテナが動作できなくなるため、OOM Killerという役割のプログラムが存在する。
+
+OOM KillerはQoSに応じてOOMKillするPodの優先順位を決定し、必要に応じて優先度の低いPodからOOMKillする
+
+QoSクラスの概要(下記の順にOOM Killが発生する)
+
+- Guaranteed
+  - Pod内のコンテナ全てにrequestsとlimitsが指定されている
+- Burstable
+  - Pod内のコンテナの内、少なくとも1つはメモリまたはCPUのrequests/limitsが指定されている
+- BestEffort
+  - リソースに何も指定されていない
+
+### Podを分散するための設定
+
+Pod Topology Spread ConstraintsはPodを分散するための設定。
+
+topologyKeyを使うことでどのようにPodを分散させるかを表現できる。
+
+```bash
+kind: Pod
+apiVersion: v1
+metadata:
+  name: mypod
+  labels:
+    app: nginx
+spec:
+  topologySpreadConstraints:
+  - maxSkew: 1 # Node間でのコンテナ数の最大差分数を定義
+    topologyKey: zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app: nginx
+  containers:
+  - name: nginx
+    image: nginx:1.25.3
+```
+
+## アプリケーションをスケールする
+
+アプリケーションのアクセスが増えると1つのPodでは負荷に耐えられなくなってくる。
+
+アプリケーションをスケールすることで安定性を上げられる。
+
+- 水平スケール
+  - 1サーバへのアクセス負荷を分散するために複数台サーバを用意するケース
+- 垂直スケール
+  - 使用リソースを増やすこと
+
+### 水平スケール
+
+Horizontal Pod Autoscaler(HPA)リソースを利用することで自動的にPodを増減することができる。
+
+HPAは通常CPUやメモリの値に応じてPod数が増減するが、任意のメトリクスを利用して増減することも可能。
+
+```bash
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hello-server-hpa
+spec:
+  minReplicas: 1    # Podの最小数を指定
+  maxReplicas: 10   # Podの最大数を指定
+  metrics:
+  - resource:
+      name: cpu
+      target:
+        averageUtilization: 50 # 全体のCPU使用率が50%を下回るようにPodを増減する
+        type: Utilization
+    type: Resource
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpa-handson
+```
+
+### 垂直スケール
+
+Vertical Pod Autoscaler(VPA)を利用することで、自動でResource Rquests/limitsの値を変更できる。
+
+ただし、HPAと同じリソースに対して同時に使用できないため、HPAのみ利用するケースが多い。
+
+## アプリケーションの可用性を保証する
+
+Deploymentを利用することでPodを更新する際にサービスを停止することなく更新を行えるが、本番環境の運用時はNodeのメンテナンスのためにPodを増減するなどのケースがある。
+
+Podを安全に待避するための機能として、Pod Disruption Budget(PDB)が存在する。
+
+下記のようなDeployment(レプリカ数3)があったとして、
+
+```bash
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-server
+  labels:
+    app: hello-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hello-server
+  template:
+    metadata:
+      labels:
+        app: hello-server
+    spec:
+      containers:
+      - name: hello-server
+        image: blux2/hello-server:1.8
+```
+
+PDBリソースで、minAvailable(最低利用可能数)が2の場合、
+
+```bash
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hello-server-pdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: hello-server
+```
+
+レプリカ数3つの内、2つは利用可能である必要があるという定義になる。
+
+そのため、Podの1つが何らかの原因でPendingになった場合、残り二つのPodをNodeから退避することができなくなる。
+
+これにより、アプリケーションの最低要件を満たさない状態でメンテナンスが実行されることを防ぐことができる。
